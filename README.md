@@ -4,6 +4,7 @@ Ansible callback plugin to count events that we care about.
 # Quickstart
 
 ```
+pip install jq
 ./run.sh
 cat hosts/*
 Queries for module foo.bar.baz:

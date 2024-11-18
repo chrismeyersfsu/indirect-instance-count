@@ -5,6 +5,9 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
+import yaml
+import jq
+
 DOCUMENTATION = '''
     callback: log_plays
     type: notification
@@ -36,14 +39,32 @@ from ansible.plugins.callback import CallbackBase
 
 # Taken from https://github.com/ansible/ansible/blob/devel/lib/ansible/cli/galaxy.py#L1624
 
-def list_collections():
-	collections = list(find_existing_collections(
-		list(collections_search_paths),
-		artifacts_manager,
-		namespace_filter=namespace_filter,
-		collection_filter=collection_filter,
-		dedupe=False
-	))
+from ansible.cli.galaxy import with_collection_artifacts_manager
+
+from ansible.galaxy.collection import (
+    find_existing_collections,
+)
+from ansible.utils.collection_loader import AnsibleCollectionConfig
+import ansible.constants as C
+
+
+
+@with_collection_artifacts_manager
+def list_collections(namespace, collection, artifacts_manager=None):
+    artifacts_manager.require_build_metadata = False
+
+    default_collections_path = set(C.COLLECTIONS_PATHS)
+    collections_search_paths = (
+        default_collections_path | set(AnsibleCollectionConfig.collection_paths)
+    )
+    collections = list(find_existing_collections(
+        list(collections_search_paths),
+        artifacts_manager,
+        namespace_filter=namespace,
+        collection_filter=collection,
+        dedupe=False
+    ))
+    return collections
 
 
 class CallbackModule(CallbackBase):
@@ -80,8 +101,22 @@ class CallbackModule(CallbackBase):
         path = os.path.join("/home/cmeyers/Scratch/indirect-instance-count/hosts", host)
         now = time.strftime(self.TIME_FORMAT, time.localtime())
 
-        msg_pre = f"resolved_action: {self.task.resolved_action}\n"
-        msg = to_bytes(msg_pre)
+        namespace, collection, module = self.task.resolved_action.split('.')
+        collection_path = list_collections(namespace, collection)[0][2].decode('utf-8')
+
+        with open(f"{collection_path}/meta/event_counting.yml") as f:
+            queries = yaml.safe_load(f)
+
+        d_dict = json.loads(data)
+        msg = f"Queries for module {namespace}.{collection}.{module}:\n"
+        for k, v in queries.items():
+            msg += f"\t{k} = {v}\n"
+
+            v_str = v['query']
+            result = jq.compile(v_str).input(d_dict).first()
+            msg += f"\tResult: {result}\n"
+
+        msg = to_bytes(msg)
         with open(path, "ab") as fd:
             fd.write(msg)
 

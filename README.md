@@ -6,5 +6,7 @@ Ansible callback plugin to count events that we care about.
 ```
 ./run.sh
 cat hosts/*
-resolved_action: ansible.builtin.shell
+Queries for module foo.bar.baz:
+        foo.bar.baz = {'query': '[.my_children | .[] | select(.changed == true)] | length', 'category': 'children'}
+        Result: 1
 ```
